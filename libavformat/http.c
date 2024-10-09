@@ -1988,12 +1988,13 @@ static int64_t http_seek_internal(URLContext *h, int64_t off, int whence, int fo
     if (s->off && h->is_streamed)
         return AVERROR(ENOSYS);
 
-    /* do not try to make a new connection if seeking past the end of the file */
-    if (s->end_off || s->filesize != UINT64_MAX) {
-        uint64_t end_pos = s->end_off ? s->end_off : s->filesize;
-        if (s->off >= end_pos)
-            return s->off;
-    }
+    if (!s->reconnect_at_eof)
+        /* do not try to make a new connection if seeking past the end of the file */
+        if (s->end_off || s->filesize != UINT64_MAX) {
+            uint64_t end_pos = s->end_off ? s->end_off : s->filesize;
+            if (s->off >= end_pos)
+                return s->off;
+        }
 
     /* if the location changed (redirect), revert to the original uri */
     if (strcmp(s->uri, s->location)) {
