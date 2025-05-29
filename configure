@@ -236,6 +236,7 @@ External library support:
   --enable-libfribidi      enable libfribidi, improves drawtext filter [no]
   --enable-libharfbuzz     enable libharfbuzz, needed for drawtext filter [no]
   --enable-libglslang      enable GLSL->SPIRV compilation via libglslang [no]
+  --enable-libggml         enable ggml as a DNN module backend [no]
   --enable-libgme          enable Game Music Emu via libgme [no]
   --enable-libgsm          enable GSM de/encoding via libgsm [no]
   --enable-libiec61883     enable iec61883 via libiec61883 [no]
@@ -1939,6 +1940,7 @@ EXTERNAL_LIBRARY_LIST="
     libfribidi
     libharfbuzz
     libglslang
+    libggml
     libgme
     libgsm
     libiec61883
@@ -2881,7 +2883,7 @@ dirac_parse_select="golomb"
 dovi_rpudec_select="golomb"
 dovi_rpuenc_select="golomb"
 dnn_deps="avformat swscale"
-dnn_deps_any="libtensorflow libopenvino libtorch"
+dnn_deps_any="libtensorflow libopenvino libtorch libggml"
 error_resilience_select="me_cmp"
 evcparse_select="golomb"
 faandct_deps="faan"
@@ -7044,6 +7046,7 @@ enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.65
 enabled libopenvino       && { { check_pkg_config libopenvino openvino openvino/c/openvino.h ov_core_create && enable openvino2; } ||
                                 { check_pkg_config libopenvino openvino c_api/ie_c_api.h ie_c_api_version ||
                                   require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api; } }
+enabled libggml           && require libggml ggml.h ggml_init -lggml -lggml-base
 enabled libopus           && {
     enabled libopus_decoder && {
         require_pkg_config libopus opus opus_multistream.h opus_multistream_decoder_create

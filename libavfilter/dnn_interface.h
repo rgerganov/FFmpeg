@@ -35,7 +35,8 @@
 typedef enum {
     DNN_TF = 1,
     DNN_OV = 1 << 1,
-    DNN_TH = 1 << 2
+    DNN_TH = 1 << 2,
+    DNN_GG = 1 << 3
 } DNNBackendType;
 
 typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4} DNNDataType;
@@ -168,6 +169,9 @@ typedef struct DnnContext {
 #endif
 #if CONFIG_LIBTORCH
     THOptions torch_option;
+#endif
+#if CONFIG_LIBGGML
+    THOptions ggml_option;
 #endif
 } DnnContext;
 
