@@ -71,6 +71,9 @@ static const AVOption dnn_detect_options[] = {
 #if (CONFIG_LIBOPENVINO == 1)
     { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, .unit = "backend" },
 #endif
+#if (CONFIG_LIBGGML == 1)
+    { "ggml",        "ggml backend flag",          0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_GG },    0, 0, FLAGS, .unit = "backend" },
+#endif
     { "confidence",  "threshold of confidence",    OFFSET2(confidence),      AV_OPT_TYPE_FLOAT,     { .dbl = 0.5 },  0, 1, FLAGS},
     { "labels",      "path to labels file",        OFFSET2(labels_filename), AV_OPT_TYPE_STRING,    { .str = NULL }, 0, 0, FLAGS },
     { "model_type",  "DNN detection model type",   OFFSET2(model_type),      AV_OPT_TYPE_INT,       { .i64 = DDMT_SSD },    INT_MIN, INT_MAX, FLAGS, .unit = "model_type" },

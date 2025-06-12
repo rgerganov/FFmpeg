@@ -23,16 +23,24 @@
  * DNN ggml backend implementation.
  */
 #include "libavutil/opt.h"
-#include <ggml.h>
+#include <ggml/ggml-dnn.h>
 #include "dnn_backend_common.h"
 
+#define OFFSET(x) offsetof(GGOptions, x)
+#define FLAGS AV_OPT_FLAG_FILTERING_PARAM
 static const AVOption dnn_ggml_options[] = {
+    { "backend_dir", "path to ggml backend dir", OFFSET(backend_dir), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, FLAGS },
     { NULL }
 };
 
 static DNNModel *dnn_load_model_gg(DnnContext *ctx, DNNFunctionType func_type, AVFilterContext *filter_ctx)
 {
-    ggml_time_init();
+    if (ctx->ggml_option.backend_dir == NULL) {
+        av_log(ctx, AV_LOG_ERROR, "GGML backend directory is not set.\n");
+    } else {
+        av_log(ctx, AV_LOG_DEBUG, "GGML backend directory: %s\n", ctx->ggml_option.backend_dir);
+    }
+    ggml_dnn_init(ctx->ggml_option.backend_dir);
     return NULL;
 }
 

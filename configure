@@ -7046,7 +7046,7 @@ enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.65
 enabled libopenvino       && { { check_pkg_config libopenvino openvino openvino/c/openvino.h ov_core_create && enable openvino2; } ||
                                 { check_pkg_config libopenvino openvino c_api/ie_c_api.h ie_c_api_version ||
                                   require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api; } }
-enabled libggml           && require libggml ggml.h ggml_init -lggml -lggml-base
+enabled libggml           && require libggml ggml/ggml-dnn.h ggml_dnn_init -lggml-dnn -lggml -lggml-base
 enabled libopus           && {
     enabled libopus_decoder && {
         require_pkg_config libopus opus opus_multistream.h opus_multistream_decoder_create

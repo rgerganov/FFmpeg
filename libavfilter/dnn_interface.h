@@ -134,6 +134,12 @@ typedef struct OVOptions {
     float mean;
 } OVOptions;
 
+typedef struct GGOptions {
+    const AVClass *clazz;
+
+    char *backend_dir;
+} GGOptions;
+
 typedef struct THOptions {
     const AVClass *clazz;
     int optimize;
@@ -171,7 +177,7 @@ typedef struct DnnContext {
     THOptions torch_option;
 #endif
 #if CONFIG_LIBGGML
-    THOptions ggml_option;
+    GGOptions ggml_option;
 #endif
 } DnnContext;
 
