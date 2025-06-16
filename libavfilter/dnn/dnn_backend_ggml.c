@@ -34,6 +34,7 @@
 typedef struct GGModel {
     DNNModel model;
     DnnContext *ctx;
+    ggml_dnn_model_t gg_model;
     //TF_Graph *graph;
     //TF_Session *session;
     //TF_Status *status;
@@ -51,6 +52,9 @@ typedef struct GGInferRequest {
     //TF_Tensor **output_tensors;
     //TF_Output *tf_input;
     //TF_Tensor *input_tensor;
+    ggml_dnn_tensor_t input_tensor;
+    int nb_output;
+    ggml_dnn_tensor_t *output_tensors;
 } GGInferRequest;
 
 typedef struct GGRequestItem {
@@ -71,27 +75,27 @@ static int execute_model_gg(GGRequestItem *request, Queue *lltask_queue);
 static void infer_completion_callback(void *args);
 //static inline void destroy_request_item(GGRequestItem **arg);
 
-
 static void gg_free_request(GGInferRequest *request)
 {
     if (!request)
         return;
-    // if (request->input_tensor) {
-    //     TF_DeleteTensor(request->input_tensor);
-    //     request->input_tensor = NULL;
-    // }
+    if (request->input_tensor) {
+        ggml_dnn_free_tensor(request->input_tensor);
+        //TF_DeleteTensor(request->input_tensor);
+        request->input_tensor = NULL;
+    }
     // av_freep(&request->tf_input);
     // av_freep(&request->tf_outputs);
-    // if (request->output_tensors) {
-    //     int nb_output = sizeof(*request->output_tensors)/sizeof(request->output_tensors[0]);
-    //     for (uint32_t i = 0; i < nb_output; ++i) {
-    //         if (request->output_tensors[i]) {
-    //             TF_DeleteTensor(request->output_tensors[i]);
-    //             request->output_tensors[i] = NULL;
-    //         }
-    //     }
-    //     av_freep(&request->output_tensors);
-    // }
+    if (request->output_tensors) {
+        for (uint32_t i = 0; i < request->nb_output; ++i) {
+            if (request->output_tensors[i]) {
+                ggml_dnn_free_tensor(request->output_tensors[i]);
+                //TF_DeleteTensor(request->output_tensors[i]);
+                request->output_tensors[i] = NULL;
+            }
+        }
+        av_freep(&request->output_tensors);
+    }
 }
 
 static GGInferRequest *gg_create_inference_request(void)
@@ -102,8 +106,8 @@ static GGInferRequest *gg_create_inference_request(void)
     }
     // infer_request->tf_outputs = NULL;
     // infer_request->tf_input = NULL;
-    // infer_request->input_tensor = NULL;
-    // infer_request->output_tensors = NULL;
+    infer_request->input_tensor = NULL;
+    infer_request->output_tensors = NULL;
     return infer_request;
 }
 
@@ -119,7 +123,14 @@ static int gg_start_inference(void *args)
         av_log(gg_model->ctx, AV_LOG_ERROR, "GGRequestItem is NULL\n");
         return AVERROR(EINVAL);
     }
-
+    printf(">>> running inference for GGModel nb_output: %d\n", infer_request->nb_output);
+    int ret = ggml_dnn_infer_model(gg_model->gg_model, 
+                                   1, &infer_request->input_tensor,
+                                   infer_request->nb_output, infer_request->output_tensors);
+    if (ret != GGML_DNN_OK) {
+        av_log(gg_model->ctx, AV_LOG_ERROR, "Failed to run inference: %d\n", ret);
+        return DNN_GENERIC_ERROR;
+    }
     // TF_SessionRun(tf_model->session, NULL,
     //               infer_request->tf_input, &infer_request->input_tensor, 1,
     //               infer_request->tf_outputs, infer_request->output_tensors,
@@ -170,10 +181,19 @@ static int get_input_gg(DNNModel *model, DNNData *input, const char *input_name)
 {
     GGModel *gg_model = (GGModel *)model;
     DnnContext *ctx = gg_model->ctx;
+    struct ggml_dnn_tensor_desc desc;
 
+    printf(">>>> get_input_gg: %s\n", input_name);
     // TF_Status *status;
     // TF_DataType dt;
-    // int64_t dims[4];
+    //int64_t dims[4];
+
+    // TODO: use input_name instead of 0
+    int ret = ggml_dnn_model_input_desc(gg_model->gg_model, 0, &desc);
+    if (ret != GGML_DNN_OK) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to get input tensor description: %d\n", ret);
+        return DNN_GENERIC_ERROR;
+    }
 
     // TF_Output tf_output;
     // tf_output.oper = TF_GraphOperationByName(tf_model->graph, input_name);
@@ -184,18 +204,18 @@ static int get_input_gg(DNNModel *model, DNNData *input, const char *input_name)
 
     // tf_output.index = 0;
     // dt = TF_OperationOutputType(tf_output);
-    // switch (dt) {
-    // case TF_FLOAT:
-    //     input->dt = DNN_FLOAT;
-    //     break;
-    // case TF_UINT8:
-    //     input->dt = DNN_UINT8;
-    //     break;
-    // default:
-    //     av_log(ctx, AV_LOG_ERROR, "Unsupported output type %d in model\n", dt);
-    //     return AVERROR(EINVAL);
-    // }
-    // input->order = DCO_RGB;
+    switch (desc.type) {
+    case F32:
+        input->dt = DNN_FLOAT;
+        break;
+    case U8:
+        input->dt = DNN_UINT8;
+        break;
+    default:
+        av_log(ctx, AV_LOG_ERROR, "Unsupported output type %d in model\n", desc.type);
+        return AVERROR(EINVAL);
+    }
+    input->order = DCO_RGB;
 
     // status = TF_NewStatus();
     // TF_GraphGetTensorShape(tf_model->graph, tf_output, dims, 4, status);
@@ -206,12 +226,11 @@ static int get_input_gg(DNNModel *model, DNNData *input, const char *input_name)
     // }
     // TF_DeleteStatus(status);
 
-    // // currently only NHWC is supported
-    // av_assert0(dims[0] == 1 || dims[0] == -1);
-    // for (int i = 0; i < 4; i++)
-    //     input->dims[i] = dims[i];
-    // input->layout = DL_NHWC;
-
+    // currently only NHWC is supported
+    av_assert0(desc.dims[0] == 1);
+    for (int i = 0; i < 4; i++)
+        input->dims[i] = desc.dims[i];
+    input->layout = DL_NHWC;
     return 0;
 }
 
@@ -232,6 +251,7 @@ static int get_output_gg(DNNModel *model, const char *input_name, int input_widt
     };
 
     ret = ff_dnn_fill_gettingoutput_task(&task, &exec_params, gg_model, input_height, input_width, ctx);
+    printf(">> task->nb_output: %d\n", task.nb_output);
     if (ret != 0) {
         goto err;
     }
@@ -261,7 +281,11 @@ err:
 
 static int load_gg_model(GGModel *gg_model, const char *model_filename)
 {
-    ggml_dnn_init(gg_model->ctx->ggml_option.backend_dir);
+    ggml_dnn_init(gg_model->ctx->ggml_option.backend_dir, NULL);
+    int ret = ggml_dnn_load_model(model_filename, &gg_model->gg_model);
+    if (ret != GGML_DNN_OK) {
+        return DNN_GENERIC_ERROR;
+    }
     return 0;
 }
 
@@ -293,6 +317,9 @@ static void dnn_free_model_gg(DNNModel **model)
     }
     ff_queue_destroy(gg_model->task_queue);
 
+    if (gg_model->gg_model) {
+        ggml_dnn_free_model(gg_model->gg_model);
+    }
     // if (tf_model->graph){
     //     TF_DeleteGraph(gg_model->graph);
     // }
@@ -322,6 +349,7 @@ static DNNModel *dnn_load_model_gg(DnnContext *ctx, DNNFunctionType func_type, A
         av_log(ctx, AV_LOG_ERROR, "Failed to load ggml model: \"%s\"\n", ctx->model_filename);
         goto err;
     }
+    printf(">> Loaded ggml model: %s\n", ctx->model_filename);
 
     if (ctx->nireq <= 0) {
         ctx->nireq = av_cpu_count() / 2 + 1;
@@ -428,6 +456,20 @@ static int fill_model_input_gg(GGModel *gg_model, GGRequestItem *request) {
     // }
     // input.data = (float *)TF_TensorData(infer_request->input_tensor);
 
+    struct ggml_dnn_tensor_desc input_desc;
+    ret = ggml_dnn_model_input_desc(gg_model->gg_model, 0, &input_desc);
+    if (ret != GGML_DNN_OK) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to get input tensor description\n");
+        return DNN_GENERIC_ERROR;
+    }
+    infer_request->input_tensor = ggml_dnn_alloc_tensor(input_desc);
+    if (!infer_request->input_tensor) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to allocate memory for input tensor\n");
+        ret = AVERROR(ENOMEM);
+        goto err;
+    }
+    input.data = ggml_dnn_tensor_data(infer_request->input_tensor);
+
     switch (gg_model->model.func_type) {
     case DFT_PROCESS_FRAME:
         if (task->do_ioproc) {
@@ -460,7 +502,22 @@ static int fill_model_input_gg(GGModel *gg_model, GGRequestItem *request) {
     //     goto err;
     // }
 
-    for (int i = 0; i < task->nb_output; ++i) {
+    infer_request->nb_output = 2; // FIXME
+    infer_request->output_tensors = av_calloc(infer_request->nb_output, sizeof(ggml_dnn_tensor_t));
+
+    for (int i = 0; i < infer_request->nb_output; ++i) {
+        struct ggml_dnn_tensor_desc output_desc;
+        ret = ggml_dnn_model_output_desc(gg_model->gg_model, i, &output_desc);
+        if (ret != GGML_DNN_OK) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to get output tensor description: %d\n", ret);
+            return DNN_GENERIC_ERROR;
+        }
+        infer_request->output_tensors[i] = ggml_dnn_alloc_tensor(output_desc);
+        if (!infer_request->output_tensors[i]) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to allocate memory for output tensor\n");
+            ret = AVERROR(ENOMEM);
+            goto err;
+        }
         // infer_request->output_tensors[i] = NULL;
         //infer_request->tf_outputs[i].oper = TF_GraphOperationByName(tf_model->graph, task->output_names[i]);
         // if (!infer_request->tf_outputs[i].oper) {
@@ -486,6 +543,7 @@ static void infer_completion_callback(void *args) {
     GGModel *gg_model = task->model;
     DnnContext *ctx = gg_model->ctx;
 
+    printf(">> infer_completion_callback, task->nb_output: %d\n", task->nb_output);
     outputs = av_calloc(task->nb_output, sizeof(*outputs));
     if (!outputs) {
         av_log(ctx, AV_LOG_ERROR, "Failed to allocate memory for *outputs\n");
@@ -523,7 +581,7 @@ static void infer_completion_callback(void *args) {
             av_log(ctx, AV_LOG_ERROR, "Detect filter needs provide post proc\n");
             return;
         }
-        gg_model->model.detect_post_proc(task->in_frame, outputs, task->nb_output, gg_model->model.filter_ctx);
+        gg_model->model.detect_post_proc(task->in_frame, outputs, 2, gg_model->model.filter_ctx); //FIXME
         break;
     default:
         av_log(ctx, AV_LOG_ERROR, "ggml backend does not support this kind of dnn filter now\n");
