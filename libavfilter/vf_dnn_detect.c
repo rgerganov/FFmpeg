@@ -185,6 +185,9 @@ static int dnn_detect_parse_yolo_output(AVFrame *frame, DNNData *output, int out
                       output[output_index].dims[2] *
                       output[output_index].dims[3] / box_size / cell_w / cell_h;
 
+    printf(">>> is_NHWC: %d, cell_w: %d, cell_h: %d, scale_w: %d, scale_h: %d, detection_boxes: %d, box_size: %d\n",
+           is_NHWC, cell_w, cell_h, scale_w, scale_h, detection_boxes, box_size);
+
     anchors = anchors + (detection_boxes * output_index * 2);
     /**
      * find all candidate bbox
@@ -207,6 +210,7 @@ static int dnn_detect_parse_yolo_output(AVFrame *frame, DNNData *output, int out
                     conf = post_process_raw_data(
                                 detection_boxes_data[cy * cell_w + cx + 4 * cell_w * cell_h]);
                 }
+                //printf("r: %3d, c: %3d, n: %3d, conf = %.4f\n", cx, cy, box_id, conf);
 
                 if (is_NHWC) {
                     x = post_process_raw_data(detection_boxes_data[0]);
@@ -251,6 +255,7 @@ static int dnn_detect_parse_yolo_output(AVFrame *frame, DNNData *output, int out
                 bbox = NULL;
             }
     }
+    printf("*******************************************************\n");
     return 0;
 }
 
@@ -554,6 +559,7 @@ static int dnn_detect_post_proc(AVFrame *frame, DNNData *output, uint32_t nb, AV
     DnnContext *dnn_ctx = &ctx->dnnctx;
     switch (dnn_ctx->backend_type) {
     case DNN_OV:
+    case DNN_GG:
         return dnn_detect_post_proc_ov(frame, output, nb, filter_ctx);
     case DNN_TF:
         return dnn_detect_post_proc_tf(frame, output, filter_ctx);
@@ -641,6 +647,8 @@ static int check_output_nb(DnnDetectContext *ctx, DNNBackendType backend_type, i
         }
         return 0;
     case DNN_OV:
+        return 0;
+    case DNN_GG:
         return 0;
     default:
         avpriv_report_missing_feature(ctx, "Dnn detect filter does not support current backend\n");

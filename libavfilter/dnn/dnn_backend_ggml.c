@@ -80,21 +80,25 @@ static void gg_free_request(GGInferRequest *request)
     if (!request)
         return;
     if (request->input_tensor) {
+        printf(">> deleting input tensor: %p\n", request->input_tensor);fflush(stdout);
         ggml_dnn_free_tensor(request->input_tensor);
         //TF_DeleteTensor(request->input_tensor);
         request->input_tensor = NULL;
     }
     // av_freep(&request->tf_input);
     // av_freep(&request->tf_outputs);
+    printf(">> deleting %d output tensors\n", request->nb_output);fflush(stdout);
     if (request->output_tensors) {
         for (uint32_t i = 0; i < request->nb_output; ++i) {
             if (request->output_tensors[i]) {
+                printf(">> deleting output tensor %d\n", i);fflush(stdout);
                 ggml_dnn_free_tensor(request->output_tensors[i]);
                 //TF_DeleteTensor(request->output_tensors[i]);
                 request->output_tensors[i] = NULL;
             }
         }
         av_freep(&request->output_tensors);
+        request->nb_output = 0;
     }
 }
 
@@ -106,6 +110,7 @@ static GGInferRequest *gg_create_inference_request(void)
     }
     // infer_request->tf_outputs = NULL;
     // infer_request->tf_input = NULL;
+    infer_request->nb_output = 0;
     infer_request->input_tensor = NULL;
     infer_request->output_tensors = NULL;
     return infer_request;
@@ -430,8 +435,8 @@ static int fill_model_input_gg(GGModel *gg_model, GGRequestItem *request) {
     }
 
     infer_request = request->infer_request;
-    input.dims[1] = task->in_frame->height;
-    input.dims[2] = task->in_frame->width;
+    // input.dims[1] = task->in_frame->height;
+    // input.dims[2] = task->in_frame->width;
 
     // infer_request->tf_input = av_malloc(sizeof(TF_Output));
     // if (!infer_request->tf_input) {
@@ -463,6 +468,7 @@ static int fill_model_input_gg(GGModel *gg_model, GGRequestItem *request) {
         return DNN_GENERIC_ERROR;
     }
     infer_request->input_tensor = ggml_dnn_alloc_tensor(input_desc);
+    printf(">> allocated input tensor: %p\n", infer_request->input_tensor);
     if (!infer_request->input_tensor) {
         av_log(ctx, AV_LOG_ERROR, "Failed to allocate memory for input tensor\n");
         ret = AVERROR(ENOMEM);
@@ -543,14 +549,27 @@ static void infer_completion_callback(void *args) {
     GGModel *gg_model = task->model;
     DnnContext *ctx = gg_model->ctx;
 
-    printf(">> infer_completion_callback, task->nb_output: %d\n", task->nb_output);
-    outputs = av_calloc(task->nb_output, sizeof(*outputs));
+    printf(">> infer_completion_callback, nb_output: %d\n", infer_request->nb_output);
+    outputs = av_calloc(infer_request->nb_output, sizeof(*outputs));
     if (!outputs) {
         av_log(ctx, AV_LOG_ERROR, "Failed to allocate memory for *outputs\n");
         goto err;
     }
+    outputs[0].dims[0] = 1;
+    outputs[0].dims[1] = 3*85;
+    outputs[0].dims[2] = 13;
+    outputs[0].dims[3] = 13;
+    outputs[0].data = ggml_dnn_tensor_data(infer_request->output_tensors[0]);
+    outputs[0].dt = DNN_FLOAT;
 
-    for (uint32_t i = 0; i < task->nb_output; ++i) {
+    outputs[1].dims[0] = 1;
+    outputs[1].dims[1] = 3*85;
+    outputs[1].dims[2] = 26;
+    outputs[1].dims[3] = 26;
+    outputs[1].data = ggml_dnn_tensor_data(infer_request->output_tensors[1]);
+    outputs[1].dt = DNN_FLOAT;
+
+    //for (uint32_t i = 0; i < task->nb_output; ++i) {
         // outputs[i].dims[dnn_get_height_idx_by_layout(outputs[i].layout)] =
         //     TF_Dim(infer_request->output_tensors[i], 1);
         // outputs[i].dims[dnn_get_width_idx_by_layout(outputs[i].layout)] =
@@ -559,7 +578,7 @@ static void infer_completion_callback(void *args) {
         //     TF_Dim(infer_request->output_tensors[i], 3);
         // outputs[i].data = TF_TensorData(infer_request->output_tensors[i]);
         // outputs[i].dt = (DNNDataType)TF_TensorType(infer_request->output_tensors[i]);
-    }
+    //}
     switch (gg_model->model.func_type) {
     case DFT_PROCESS_FRAME:
         //it only support 1 output if it's frame in & frame out
